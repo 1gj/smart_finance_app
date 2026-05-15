@@ -1,31 +1,37 @@
+import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 import 'package:intl/intl.dart';
+import 'package:path_provider/path_provider.dart';
 
 void main() async {
-  // التأكد من تهيئة واجهات فلاتر
   WidgetsFlutterBinding.ensureInitialized();
-
-  // تهيئة قاعدة البيانات المحلية Hive
   await Hive.initFlutter();
 
-  // تسجيل محول البيانات المالي يدويًا لتجنب الحاجة لملفات خارجية
+  // تسجيل المحولات
   Hive.registerAdapter(FinancialRecordAdapter());
 
-  // فتح صندوق تخزين البيانات المالية
+  // فتح الصناديق (واحد للبيانات وواحد للإعدادات)
   await Hive.openBox<FinancialRecord>('finance_box');
+  await Hive.openBox('settings_box');
 
   runApp(const SmartFinanceApp());
 }
 
 // ==========================================
-// 1. موديل البيانات (Model & Manual Adapter)
+// 1. موديل البيانات (Financial Record Model)
 // ==========================================
+@HiveType(typeId: 0)
 class FinancialRecord {
-  final String date; // صيغة التخزين: YYYY-MM-DD
+  @HiveField(0)
+  final String date;
+  @HiveField(1)
   int morningShifts;
+  @HiveField(2)
   int eveningShifts;
+  @HiveField(3)
   double extraIncome;
+  @HiveField(4)
   double dailyExpenses;
 
   FinancialRecord({
@@ -35,39 +41,34 @@ class FinancialRecord {
     this.extraIncome = 0.0,
     this.dailyExpenses = 0.0,
   });
-
-  double get totalDailyIncome =>
-      (morningShifts + eveningShifts) * 12500 + extraIncome;
 }
 
-// محول ومفسر البيانات لـ Hive لضمان حفظ الكائنات محلياً بأعلى سرعة وأمان
 class FinancialRecordAdapter extends TypeAdapter<FinancialRecord> {
   @override
   final int typeId = 0;
-
   @override
   FinancialRecord read(BinaryReader reader) {
     return FinancialRecord(
-      date: reader.readString(),
-      morningShifts: reader.readInt(),
-      eveningShifts: reader.readInt(),
-      extraIncome: reader.readDouble(),
-      dailyExpenses: reader.readDouble(),
+      date: reader.read(),
+      morningShifts: reader.read(),
+      eveningShifts: reader.read(),
+      extraIncome: reader.read(),
+      dailyExpenses: reader.read(),
     );
   }
 
   @override
   void write(BinaryWriter writer, FinancialRecord obj) {
-    writer.writeString(obj.date);
-    writer.writeInt(obj.morningShifts);
-    writer.writeInt(obj.eveningShifts);
-    writer.writeDouble(obj.extraIncome);
-    writer.writeDouble(obj.dailyExpenses);
+    writer.write(obj.date);
+    writer.write(obj.morningShifts);
+    writer.write(obj.eveningShifts);
+    writer.write(obj.extraIncome);
+    writer.write(obj.dailyExpenses);
   }
 }
 
 // ==========================================
-// 2. التطبيق الرئيسي وإعدادات الثيم الداكن
+// 2. التطبيق الرئيسي والواجهة
 // ==========================================
 class SmartFinanceApp extends StatelessWidget {
   const SmartFinanceApp({Key? key}) : super(key: key);
@@ -76,493 +77,522 @@ class SmartFinanceApp extends StatelessWidget {
   Widget build(BuildContext context) {
     return MaterialApp(
       debugShowCheckedModeBanner: false,
-      title: 'المساعد المالي الذكي',
-      // تطبيق واجهة Dark Mode احترافية ومريحة للعين
       theme: ThemeData.dark().copyWith(
-        scaffoldBackgroundColor: const Color(0xFF121212),
-        cardColor: const Color(0xFF1E1E1E),
+        scaffoldBackgroundColor: const Color(0xFF0F111A),
+        cardColor: const Color(0xFF1A1D29),
         colorScheme: const ColorScheme.dark(
           primary: Color(0xFF00ADB5),
-          secondary: Colors.greenAccent,
-          surface: Color(0xFF1E1E1E),
+          secondary: Colors.amber,
         ),
       ),
-      home: const FinanceHomeScreen(),
+      home: const MainNavigationScreen(),
+    );
+  }
+}
+
+class MainNavigationScreen extends StatefulWidget {
+  const MainNavigationScreen({Key? key}) : super(key: key);
+  @override
+  State<MainNavigationScreen> createState() => _MainNavigationScreenState();
+}
+
+class _MainNavigationScreenState extends State<MainNavigationScreen> {
+  int _selectedIndex = 0;
+  final List<Widget> _screens = [
+    const HomeScreen(),
+    const HistoryScreen(),
+    const AnalyticsScreen(),
+    const SettingsScreen(),
+  ];
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      body: _screens[_selectedIndex],
+      bottomNavigationBar: BottomNavigationBar(
+        currentIndex: _selectedIndex,
+        onTap: (index) => setState(() => _selectedIndex = index),
+        type: BottomNavigationBarType.fixed,
+        selectedItemColor: const Color(0xFF00ADB5),
+        unselectedItemColor: Colors.grey,
+        items: const [
+          BottomNavigationBarItem(
+            icon: Icon(Icons.home_filled),
+            label: 'الرئيسية',
+          ),
+          BottomNavigationBarItem(icon: Icon(Icons.history), label: 'السجل'),
+          BottomNavigationBarItem(
+            icon: Icon(Icons.analytics),
+            label: 'الإحصائيات',
+          ),
+          BottomNavigationBarItem(
+            icon: Icon(Icons.settings),
+            label: 'الإعدادات',
+          ),
+        ],
+      ),
     );
   }
 }
 
 // ==========================================
-// 3. الشاشة الرئيسية وإدارة الحسابات
+// 3. الشاشة الرئيسية (Home)
 // ==========================================
-class FinanceHomeScreen extends StatefulWidget {
-  const FinanceHomeScreen({Key? key}) : super(key: key);
-
+class HomeScreen extends StatefulWidget {
+  const HomeScreen({Key? key}) : super(key: key);
   @override
-  State<FinanceHomeScreen> createState() => _FinanceHomeScreenState();
+  State<HomeScreen> createState() => _HomeScreenState();
 }
 
-class _FinanceHomeScreenState extends State<FinanceHomeScreen> {
-  final Box<FinancialRecord> _financeBox = Hive.box<FinancialRecord>(
-    'finance_box',
-  );
-  final TextEditingController _expenseController = TextEditingController();
+class _HomeScreenState extends State<HomeScreen> {
+  final Box<FinancialRecord> _box = Hive.box<FinancialRecord>('finance_box');
+  final Box _settings = Hive.box('settings_box');
+  final TextEditingController _expCtrl = TextEditingController();
 
-  double _totalMonthlyIncome = 0.0;
-  double _totalMonthlyExpenses = 0.0;
-  double _savedLoan = 0.0;
-  double _netBalance = 0.0;
-  final double _targetLoan = 250000.0;
+  double _netBalance = 0, _totalCapital = 0, _savedLoan = 0;
+  final currencyFormat = NumberFormat('#,###', 'en_US');
 
   @override
   void initState() {
     super.initState();
-    _calculateFinancials();
+    _refreshData();
   }
 
-  // محرك الادخار الذكي: خوارزمية الـ 20 يوم وحساب الأرقام بدقة وحظر مصاريف العمل
-  void _calculateFinancials() {
-    final currentMonth = DateFormat('yyyy-MM').format(DateTime.now());
+  void _refreshData() {
+    double tempTotalIncome = 0,
+        tempTotalExpenses = 0,
+        tempMonthlyIncome = 0,
+        tempMonthlyExpenses = 0,
+        tempSavedLoan = 0;
+    final now = DateTime.now();
+    final currentMonth = DateFormat('yyyy-MM').format(now);
 
-    double tempIncome = 0.0;
-    double tempExpenses = 0.0;
-    double tempSavedLoan = 0.0;
+    // جلب الإعدادات
+    double shiftPrice = _settings.get('shiftPrice', defaultValue: 12500.0);
+    double loanTarget = _settings.get('loanTarget', defaultValue: 250000.0);
 
-    // جلب جميع السجلات وتصفيتها للشهر الحالي فقط
-    final monthlyRecords = _financeBox.values
-        .where((record) => record.date.startsWith(currentMonth))
-        .toList();
+    for (var record in _box.values) {
+      double recordIncome =
+          (record.morningShifts + record.eveningShifts) * shiftPrice +
+          record.extraIncome;
+      tempTotalIncome += recordIncome;
+      tempTotalExpenses += record.dailyExpenses;
 
-    for (var record in monthlyRecords) {
-      tempIncome += record.totalDailyIncome;
-      tempExpenses += record.dailyExpenses;
+      if (record.date.startsWith(currentMonth)) {
+        tempMonthlyIncome += recordIncome;
+        tempMonthlyExpenses += record.dailyExpenses;
 
-      // تطبيق خوارزمية الـ 20 يوم الذكية
-      int dayNumber = int.parse(record.date.split('-')[2]);
-      if (dayNumber <= 20 &&
-          (record.morningShifts > 0 || record.eveningShifts > 0)) {
-        // حجز شفت واحد بقيمة 12,500 د.ع يومياً لصالح السلفة في أول 20 يوماً فقط
-        if (tempSavedLoan < _targetLoan) {
-          tempSavedLoan += 12500;
-          if (tempSavedLoan > _targetLoan) tempSavedLoan = _targetLoan;
+        int day = int.parse(record.date.split('-')[2]);
+        if (day <= 20 &&
+            (record.morningShifts > 0 || record.eveningShifts > 0)) {
+          if (tempSavedLoan < loanTarget) tempSavedLoan += shiftPrice;
         }
       }
     }
 
     setState(() {
-      _totalMonthlyIncome = tempIncome;
-      _totalMonthlyExpenses = tempExpenses;
-      _savedLoan = tempSavedLoan;
-      // الرصيد الصافي المتاح للصرف = الإيرادات - المصاريف الشخصية - المحجوز للسلفة
-      _netBalance = _totalMonthlyIncome - _totalMonthlyExpenses - _savedLoan;
+      _totalCapital = tempTotalIncome - tempTotalExpenses; // الخزنة التراكمية
+      _savedLoan = tempSavedLoan > loanTarget ? loanTarget : tempSavedLoan;
+      _netBalance = tempMonthlyIncome - tempMonthlyExpenses - _savedLoan;
     });
-  }
-
-  // نظام تسجيل الدخل بلمسة واحدة للشفتات
-  void _addShift({required bool isMorning}) {
-    final today = DateFormat('yyyy-MM-dd').format(DateTime.now());
-    final existingRecord = _financeBox.get(today);
-
-    final record = existingRecord ?? FinancialRecord(date: today);
-    if (isMorning) {
-      record.morningShifts++;
-    } else {
-      record.eveningShifts++;
-    }
-
-    _financeBox.put(today, record);
-    _calculateFinancials();
-
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(
-          isMorning ? 'تم تسجيل شفت الصباح بنجاح' : 'تم تسجيل شفت المساء بنجاح',
-        ),
-        duration: const Duration(seconds: 1),
-      ),
-    );
-  }
-
-  // إضافة دخل الفلتر الدوري (100 ألف كل 15 يوماً)
-  void _addFilterIncome() {
-    final today = DateFormat('yyyy-MM-dd').format(DateTime.now());
-    final existingRecord = _financeBox.get(today);
-
-    final record = existingRecord ?? FinancialRecord(date: today);
-    record.extraIncome += 100000;
-
-    _financeBox.put(today, record);
-    _calculateFinancials();
-
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-        content: Text('تم دمج دخل الفلتر الدوري (+100,000 د.ع)'),
-        backgroundColor: Colors.green,
-      ),
-    );
-  }
-
-  // إدارة المصاريف الشخصية والمنزلية اليومية وطرحها من المتبقي
-  void _addDailyExpense() {
-    if (_expenseController.text.isEmpty) return;
-    final double? expenseAmount = double.tryParse(_expenseController.text);
-    if (expenseAmount == null || expenseAmount <= 0) return;
-
-    final today = DateFormat('yyyy-MM-dd').format(DateTime.now());
-    final existingRecord = _financeBox.get(today);
-
-    final record = existingRecord ?? FinancialRecord(date: today);
-    record.dailyExpenses += expenseAmount;
-
-    _financeBox.put(today, record);
-    _expenseController.clear();
-    FocusScope.of(context).unfocus();
-    _calculateFinancials();
-
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-        content: Text('تم تسجيل المصروف الشخصي وتحديث الرصيد الصافي'),
-      ),
-    );
   }
 
   @override
   Widget build(BuildContext context) {
-    final currencyFormat = NumberFormat('#,###', 'en_US');
-    double progressPercent = _savedLoan / _targetLoan;
-
     return Scaffold(
       appBar: AppBar(
-        title: const Text(
-          'المساعد المالي الشخصي',
-          style: TextStyle(fontWeight: FontWeight.bold, letterSpacing: 1.2),
-        ),
+        title: const Text('المحفظة الذكية'),
         centerTitle: true,
-        backgroundColor: Colors.transparent,
         elevation: 0,
       ),
       body: SingleChildScrollView(
-        physics: const BouncingScrollPhysics(),
-        child: Padding(
-          padding: const EdgeInsets.all(16.0),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              // 1. بطاقة ملخص الرصيد الصافي القابل للصرف
-              Container(
-                decoration: BoxDecoration(
-                  gradient: const LinearGradient(
-                    colors: [Color(0xFF1E3C72), Color(0xFF2A5298)],
-                    begin: Alignment.topLeft,
-                    end: Alignment.bottomRight,
-                  ),
-                  borderRadius: BorderRadius.circular(24),
-                  boxShadow: [
-                    BoxShadow(
-                      color: Colors.blue.withOpacity(0.2),
-                      blurRadius: 10,
-                      offset: const Offset(0, 5),
-                    ),
-                  ],
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          children: [
+            // بطاقة الخزنة التراكمية
+            _buildStatusCard(
+              'إجمالي النقد المتوفر (الخزنة)',
+              _totalCapital,
+              Colors.amber,
+              Icons.account_balance_wallet,
+            ),
+            const SizedBox(height: 12),
+            // بطاقة الرصيد الصافي
+            _buildStatusCard(
+              'رصيد الصرف (هذا الشهر)',
+              _netBalance,
+              const Color(0xFF00ADB5),
+              Icons.savings,
+            ),
+            const SizedBox(height: 20),
+            // شريط تقدم السلفة
+            _buildLoanProgress(),
+            const SizedBox(height: 25),
+            // أزرار التحكم
+            Row(
+              children: [
+                _buildQuickBtn(
+                  'شفت صباح',
+                  () => _addShift(true),
+                  Colors.orange,
                 ),
-                child: Padding(
-                  padding: const EdgeInsets.all(24.0),
-                  child: Column(
-                    children: [
-                      const Text(
-                        'الرصيد الصافي المتوفر للصرف الفعلي',
-                        style: TextStyle(
-                          color: Colors.white70,
-                          fontSize: 15,
-                          fontWeight: FontWeight.w500,
-                        ),
-                      ),
-                      const SizedBox(height: 12),
-                      Text(
-                        '${currencyFormat.format(_netBalance)} د.ع',
-                        style: const TextStyle(
-                          color: Colors.white,
-                          fontSize: 30,
-                          fontWeight: FontWeight.bold,
-                          letterSpacing: 1,
-                        ),
-                      ),
-                      const SizedBox(height: 15),
-                      const Divider(color: Colors.white24),
-                      const SizedBox(height: 10),
-                      Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceAround,
-                        children: [
-                          _buildMiniStat(
-                            'إجمالي الوارد',
-                            '${currencyFormat.format(_totalMonthlyIncome)} د.ع',
-                            Colors.greenAccent,
-                          ),
-                          _buildMiniStat(
-                            'المصاريف الشخصية',
-                            '${currencyFormat.format(_totalMonthlyExpenses)} د.ع',
-                            Colors.redAccent,
-                          ),
-                        ],
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-              const SizedBox(height: 24),
-
-              // 2. مؤشرات تقدم ومراقبة هدف السلفة الشهرية
-              Card(
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(16),
-                ),
-                child: Padding(
-                  padding: const EdgeInsets.all(16.0),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                        children: [
-                          const Text(
-                            'مؤشر حجز السلفة (خوارزمية 20 يوم)',
-                            style: TextStyle(
-                              fontSize: 14,
-                              fontWeight: FontWeight.bold,
-                            ),
-                          ),
-                          Text(
-                            '${(progressPercent * 100).toStringAsFixed(0)}%',
-                            style: const TextStyle(
-                              color: Colors.greenAccent,
-                              fontWeight: FontWeight.bold,
-                            ),
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 12),
-                      ClipRRect(
-                        borderRadius: BorderRadius.circular(8),
-                        child: LinearProgressIndicator(
-                          value: progressPercent,
-                          minHeight: 12,
-                          backgroundColor: Colors.grey[800],
-                          color: Colors.greenAccent,
-                        ),
-                      ),
-                      const SizedBox(height: 12),
-                      Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                        children: [
-                          Text(
-                            'المؤمن: ${currencyFormat.format(_savedLoan)} د.ع',
-                            style: const TextStyle(
-                              color: Colors.grey,
-                              fontSize: 12,
-                            ),
-                          ),
-                          Text(
-                            'الهدف الثابت: ${currencyFormat.format(_targetLoan)} د.ع',
-                            style: const TextStyle(
-                              color: Colors.grey,
-                              fontSize: 12,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-              const SizedBox(height: 24),
-
-              // 3. أزرار تسجيل الدخل بلمسة واحدة (أزرار الشفتات الذكية)
-              const Text(
-                'تسجيل الدخل السريع "بلمسة واحدة"',
-                style: TextStyle(
-                  fontSize: 15,
-                  fontWeight: FontWeight.bold,
-                  color: Colors.grey,
-                ),
-              ),
-              const SizedBox(height: 12),
-              Row(
-                children: [
-                  Expanded(
-                    child: InkWell(
-                      onTap: () => _addShift(isMorning: true),
-                      borderRadius: BorderRadius.circular(16),
-                      child: _buildShiftButton(
-                        title: 'شفت الصباح',
-                        amount: '+12,500 د.ع',
-                        icon: Icons.wb_sunny_rounded,
-                        color: Colors.orangeAccent,
-                      ),
-                    ),
-                  ),
-                  const SizedBox(width: 16),
-                  Expanded(
-                    child: InkWell(
-                      onTap: () => _addShift(isMorning: false),
-                      borderRadius: BorderRadius.circular(16),
-                      child: _buildShiftButton(
-                        title: 'شفت المساء',
-                        amount: '+12,500 د.ع',
-                        icon: Icons.nightlight_round,
-                        color: Colors.cyanAccent,
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 16),
-
-              // 4. زر دخل الفلتر الـ 15 يومي
-              ElevatedButton.icon(
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: const Color(0xFF222831),
-                  side: const BorderSide(color: Colors.amber, width: 1),
-                  padding: const EdgeInsets.symmetric(vertical: 16),
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(16),
-                  ),
-                ),
-                onPressed: _addFilterIncome,
-                icon: const Icon(Icons.auto_awesome, color: Colors.amber),
-                label: const Text(
-                  'تسجيل دخل الفلتر الدوري (+100,000 د.ع)',
-                  style: TextStyle(
-                    fontSize: 14,
-                    fontWeight: FontWeight.bold,
-                    color: Colors.white,
-                  ),
-                ),
-              ),
-              const SizedBox(height: 24),
-
-              // 5. قسم إدارة المصاريف الشخصية والمنزلية اليومية (بدون تعقيدات مصاريف العمل)
-              const Text(
-                'تسجيل المصاريف الشخصية والمنزلية',
-                style: TextStyle(
-                  fontSize: 15,
-                  fontWeight: FontWeight.bold,
-                  color: Colors.grey,
-                ),
-              ),
-              const SizedBox(height: 12),
-              Card(
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(16),
-                ),
-                child: Padding(
-                  padding: const EdgeInsets.all(16.0),
-                  child: Row(
-                    children: [
-                      Expanded(
-                        child: TextField(
-                          controller: _expenseController,
-                          keyboardType: TextInputType.number,
-                          decoration: const InputDecoration(
-                            hintText: 'أدخل المبلغ (طعام، نقل، تسوق...)',
-                            hintStyle: TextStyle(
-                              color: Colors.white30,
-                              fontSize: 14,
-                            ),
-                            border: InputBorder.none,
-                            prefixIcon: Icon(
-                              Icons.account_balance_wallet_outlined,
-                              color: Colors.redAccent,
-                            ),
-                          ),
-                        ),
-                      ),
-                      ElevatedButton(
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: Colors.redAccent,
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(12),
-                          ),
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 20,
-                            vertical: 12,
-                          ),
-                        ),
-                        onPressed: _addDailyExpense,
-                        child: const Text(
-                          'خصم',
-                          style: TextStyle(
-                            fontWeight: FontWeight.bold,
-                            color: Colors.white,
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-            ],
-          ),
+                const SizedBox(width: 10),
+                _buildQuickBtn('شفت مساء', () => _addShift(false), Colors.blue),
+              ],
+            ),
+            const SizedBox(height: 12),
+            _buildActionBtn(
+              'تسجيل دخل الفلتر (+100 ألف)',
+              _addFilter,
+              Colors.green,
+            ),
+            const SizedBox(height: 25),
+            // خانة المصاريف
+            _buildExpenseInput(),
+          ],
         ),
       ),
     );
   }
 
-  Widget _buildMiniStat(String label, String value, Color color) {
-    return Column(
-      children: [
-        Text(
-          label,
-          style: const TextStyle(color: Colors.white54, fontSize: 12),
-        ),
-        const SizedBox(height: 4),
-        Text(
-          value,
-          style: TextStyle(
-            color: color,
-            fontSize: 14,
-            fontWeight: FontWeight.bold,
+  Widget _buildStatusCard(
+    String title,
+    double amount,
+    Color color,
+    IconData icon,
+  ) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        color: color.withOpacity(0.1),
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: color.withOpacity(0.3)),
+      ),
+      child: Row(
+        children: [
+          Icon(icon, color: color, size: 40),
+          const SizedBox(width: 20),
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                title,
+                style: const TextStyle(fontSize: 14, color: Colors.grey),
+              ),
+              Text(
+                '${currencyFormat.format(amount)} د.ع',
+                style: TextStyle(
+                  fontSize: 24,
+                  fontWeight: FontWeight.bold,
+                  color: color,
+                ),
+              ),
+            ],
           ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildLoanProgress() {
+    double target = _settings.get('loanTarget', defaultValue: 250000.0);
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            const Text(
+              'هدف السلفة الشهرية',
+              style: TextStyle(fontWeight: FontWeight.bold),
+            ),
+            Text('${(_savedLoan / target * 100).toStringAsFixed(0)}%'),
+          ],
+        ),
+        const SizedBox(height: 8),
+        LinearProgressIndicator(
+          value: _savedLoan / target,
+          minHeight: 10,
+          borderRadius: BorderRadius.circular(5),
+          color: Colors.greenAccent,
         ),
       ],
     );
   }
 
-  Widget _buildShiftButton({
-    required String title,
-    required String amount,
-    required IconData icon,
-    required Color color,
-  }) {
-    return Container(
-      padding: const EdgeInsets.all(20),
-      decoration: BoxDecoration(
-        color: const Color(0xFF1E1E1E),
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: color.withOpacity(0.3), width: 1.5),
+  Widget _buildQuickBtn(String label, VoidCallback tap, Color color) {
+    return Expanded(
+      child: ElevatedButton(
+        style: ElevatedButton.styleFrom(
+          backgroundColor: color.withOpacity(0.1),
+          foregroundColor: color,
+          padding: const EdgeInsets.symmetric(vertical: 20),
+          side: BorderSide(color: color),
+        ),
+        onPressed: tap,
+        child: Text(label, style: const TextStyle(fontWeight: FontWeight.bold)),
       ),
-      child: Column(
+    );
+  }
+
+  Widget _buildActionBtn(String label, VoidCallback tap, Color color) {
+    return SizedBox(
+      width: double.infinity,
+      child: ElevatedButton(
+        style: ElevatedButton.styleFrom(
+          backgroundColor: color,
+          padding: const EdgeInsets.symmetric(vertical: 15),
+        ),
+        onPressed: tap,
+        child: Text(
+          label,
+          style: const TextStyle(
+            color: Colors.white,
+            fontWeight: FontWeight.bold,
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildExpenseInput() {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 15),
+      decoration: BoxDecoration(
+        color: const Color(0xFF1A1D29),
+        borderRadius: BorderRadius.circular(15),
+      ),
+      child: Row(
         children: [
-          Icon(icon, color: color, size: 32),
-          const SizedBox(height: 12),
-          Text(
-            title,
-            style: const TextStyle(
-              fontSize: 15,
-              fontWeight: FontWeight.bold,
-              color: Colors.white,
+          Expanded(
+            child: TextField(
+              controller: _expCtrl,
+              keyboardType: TextInputType.number,
+              decoration: const InputDecoration(
+                hintText: 'سجل مصروف شخصي...',
+                border: InputBorder.none,
+              ),
             ),
           ),
-          const SizedBox(height: 6),
-          Text(
-            amount,
-            style: TextStyle(
-              fontSize: 13,
-              color: color,
-              fontWeight: FontWeight.w600,
-            ),
+          IconButton(
+            icon: const Icon(Icons.remove_circle, color: Colors.redAccent),
+            onPressed: _saveExpense,
           ),
         ],
       ),
     );
+  }
+
+  void _addShift(bool isMorning) {
+    final today = DateFormat('yyyy-MM-dd').format(DateTime.now());
+    var rec = _box.get(today) ?? FinancialRecord(date: today);
+    isMorning ? rec.morningShifts++ : rec.eveningShifts++;
+    _box.put(today, rec);
+    _refreshData();
+  }
+
+  void _addFilter() {
+    final today = DateFormat('yyyy-MM-dd').format(DateTime.now());
+    var rec = _box.get(today) ?? FinancialRecord(date: today);
+    rec.extraIncome += _settings.get('filterPrice', defaultValue: 100000.0);
+    _box.put(today, rec);
+    _refreshData();
+  }
+
+  void _saveExpense() {
+    if (_expCtrl.text.isEmpty) return;
+    final today = DateFormat('yyyy-MM-dd').format(DateTime.now());
+    var rec = _box.get(today) ?? FinancialRecord(date: today);
+    rec.dailyExpenses += double.parse(_expCtrl.text);
+    _box.put(today, rec);
+    _expCtrl.clear();
+    _refreshData();
+  }
+}
+
+// ==========================================
+// 4. شاشة السجل التاريخي (History & Delete)
+// ==========================================
+class HistoryScreen extends StatelessWidget {
+  const HistoryScreen({Key? key}) : super(key: key);
+
+  @override
+  Widget build(BuildContext context) {
+    final box = Hive.box<FinancialRecord>('finance_box');
+    final records = box.values.toList().reversed.toList();
+
+    return Scaffold(
+      appBar: AppBar(title: const Text('سجل العمليات'), centerTitle: true),
+      body: ListView.builder(
+        itemCount: records.length,
+        itemBuilder: (context, index) {
+          final rec = records[index];
+          return Card(
+            margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+            child: ListTile(
+              leading: const Icon(
+                Icons.calendar_today,
+                color: Color(0xFF00ADB5),
+              ),
+              title: Text(
+                rec.date,
+                style: const TextStyle(fontWeight: FontWeight.bold),
+              ),
+              subtitle: Text(
+                'شفتات: ${rec.morningShifts + rec.eveningShifts} | مصاريف: ${rec.dailyExpenses}',
+              ),
+              trailing: IconButton(
+                icon: const Icon(Icons.delete_sweep, color: Colors.redAccent),
+                onPressed: () {
+                  box.deleteAt(box.values.length - 1 - index);
+                  (context as Element).markNeedsBuild(); // تحديث الواجهة
+                },
+              ),
+            ),
+          );
+        },
+      ),
+    );
+  }
+}
+
+// ==========================================
+// 5. شاشة الإحصائيات (Analytics)
+// ==========================================
+class AnalyticsScreen extends StatelessWidget {
+  const AnalyticsScreen({Key? key}) : super(key: key);
+
+  @override
+  Widget build(BuildContext context) {
+    final box = Hive.box<FinancialRecord>('finance_box');
+    double totalIn = 0, totalOut = 0;
+    for (var r in box.values) {
+      totalIn += (r.morningShifts + r.eveningShifts) * 12500 + r.extraIncome;
+      totalOut += r.dailyExpenses;
+    }
+
+    return Scaffold(
+      appBar: AppBar(title: const Text('تحليل البيانات'), centerTitle: true),
+      body: Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            const Icon(Icons.pie_chart, size: 100, color: Color(0xFF00ADB5)),
+            const SizedBox(height: 20),
+            Text(
+              'إجمالي الوارد: ${totalIn.toStringAsFixed(0)} د.ع',
+              style: const TextStyle(fontSize: 18, color: Colors.greenAccent),
+            ),
+            Text(
+              'إجمالي المصاريف: ${totalOut.toStringAsFixed(0)} د.ع',
+              style: const TextStyle(fontSize: 18, color: Colors.redAccent),
+            ),
+            const Padding(
+              padding: EdgeInsets.all(40),
+              child: Text(
+                'سيتم إضافة رسوم بيانية تفصيلية في التحديث القادم',
+                textAlign: TextAlign.center,
+                style: TextStyle(color: Colors.grey),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+// ==========================================
+// 6. شاشة الإعدادات (Settings & Export)
+// ==========================================
+class SettingsScreen extends StatefulWidget {
+  const SettingsScreen({Key? key}) : super(key: key);
+  @override
+  State<SettingsScreen> createState() => _SettingsScreenState();
+}
+
+class _SettingsScreenState extends State<SettingsScreen> {
+  final _settings = Hive.box('settings_box');
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(title: const Text('الإعدادات'), centerTitle: true),
+      body: ListView(
+        padding: const EdgeInsets.all(16),
+        children: [
+          _buildSettingItem('قيمة الشفت الواحدة', 'shiftPrice', 12500.0),
+          _buildSettingItem('هدف السلفة الشهرية', 'loanTarget', 250000.0),
+          _buildSettingItem('مبلغ دخل الفلتر', 'filterPrice', 100000.0),
+          const Divider(height: 40),
+          ListTile(
+            leading: const Icon(Icons.file_download, color: Colors.green),
+            title: const Text('تصدير البيانات كملف نصي'),
+            onTap: _exportData,
+          ),
+          ListTile(
+            leading: const Icon(Icons.delete_forever, color: Colors.red),
+            title: const Text('مسح جميع البيانات'),
+            onTap: () => Hive.box<FinancialRecord>('finance_box').clear(),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildSettingItem(String title, String key, double defaultVal) {
+    return ListTile(
+      title: Text(title),
+      subtitle: Text(
+        'الحالي: ${_settings.get(key, defaultValue: defaultVal)} د.ع',
+      ),
+      trailing: const Icon(Icons.edit, size: 20),
+      onTap: () => _showEditDialog(title, key),
+    );
+  }
+
+  void _showEditDialog(String title, String key) {
+    TextEditingController c = TextEditingController();
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Text('تعديل $title'),
+        content: TextField(
+          controller: c,
+          keyboardType: TextInputType.number,
+          decoration: const InputDecoration(hintText: 'أدخل القيمة الجديدة'),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('إلغاء'),
+          ),
+          TextButton(
+            onPressed: () {
+              _settings.put(key, double.parse(c.text));
+              setState(() {});
+              Navigator.pop(context);
+            },
+            child: const Text('حفظ'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _exportData() async {
+    final box = Hive.box<FinancialRecord>('finance_box');
+    String content = "تاريخ, شفتات صباح, شفتات مساء, دخل إضافي, مصاريف\n";
+    for (var r in box.values) {
+      content +=
+          "${r.date}, ${r.morningShifts}, ${r.eveningShifts}, ${r.extraIncome}, ${r.dailyExpenses}\n";
+    }
+    final directory = await getApplicationDocumentsDirectory();
+    final file = File('${directory.path}/finance_backup.csv');
+    await file.writeAsString(content);
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(SnackBar(content: Text('تم حفظ الملف في: ${file.path}')));
   }
 }
